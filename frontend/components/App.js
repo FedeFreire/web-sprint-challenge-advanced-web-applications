@@ -1,93 +1,206 @@
-import React, { useState } from 'react'
-import { NavLink, Routes, Route, useNavigate } from 'react-router-dom'
-import Articles from './Articles'
-import LoginForm from './LoginForm'
-import Message from './Message'
-import ArticleForm from './ArticleForm'
-import Spinner from './Spinner'
-
-const articlesUrl = 'http://localhost:9000/api/articles'
-const loginUrl = 'http://localhost:9000/api/login'
+import React, { useState, useEffect } from "react";
+import { NavLink, Routes, Route, useNavigate } from "react-router-dom";
+import Articles from "./Articles";
+import LoginForm from "./LoginForm";
+import Message from "./Message";
+import ArticleForm from "./ArticleForm";
+import Spinner from "./Spinner";
+import axiosWithAuth from "../axios";
 
 export default function App() {
-  // ✨ MVP can be achieved with these states
-  const [message, setMessage] = useState('')
-  const [articles, setArticles] = useState([])
-  const [currentArticleId, setCurrentArticleId] = useState()
-  const [spinnerOn, setSpinnerOn] = useState(false)
+  const [message, setMessage] = useState("");
+  const [articles, setArticles] = useState([]);
+  const [currentArticleId, setCurrentArticleId] = useState(null);
+  const [spinnerOn, setSpinnerOn] = useState(false);
 
-  // ✨ Research `useNavigate` in React Router v.6
-  const navigate = useNavigate()
-  const redirectToLogin = () => { /* ✨ implement */ }
-  const redirectToArticles = () => { /* ✨ implement */ }
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    console.log("Message updated to:", message);
+  }, [message]);
+
+  const redirectToLogin = () => {
+    setMessage("");
+    navigate("/");
+  };
+
+  const redirectToArticles = () => {
+    //setMessage("");
+    navigate("/articles");
+  };
 
   const logout = () => {
-    // ✨ implement
-    // If a token is in local storage it should be removed,
-    // and a message saying "Goodbye!" should be set in its proper state.
-    // In any case, we should redirect the browser back to the login screen,
-    // using the helper above.
-  }
+    localStorage.removeItem("token");
+    setArticles([]);
+    setMessage("Goodbye!");
 
-  const login = ({ username, password }) => {
-    // ✨ implement
-    // We should flush the message state, turn on the spinner
-    // and launch a request to the proper endpoint.
-    // On success, we should set the token to local storage in a 'token' key,
-    // put the server success message in its proper state, and redirect
-    // to the Articles screen. Don't forget to turn off the spinner!
-  }
+    setTimeout(() => {
+      redirectToLogin();
+    }, 3000);
+  };
 
-  const getArticles = () => {
-    // ✨ implement
-    // We should flush the message state, turn on the spinner
-    // and launch an authenticated request to the proper endpoint.
-    // On success, we should set the articles in their proper state and
-    // put the server success message in its proper state.
-    // If something goes wrong, check the status of the response:
-    // if it's a 401 the token might have gone bad, and we should redirect to login.
-    // Don't forget to turn off the spinner!
-  }
+  const login = async ({ username, password }) => {
+    setMessage("");
+    setSpinnerOn(true);
+    try {
+      const response = await axiosWithAuth().post("/login", {
+        username,
+        password,
+      });
+      localStorage.setItem("token", response.data.token);
+      redirectToArticles();
+    } catch (error) {
+      console.error(
+        "Login failed:",
+        error.response ? error.response.data : error.message
+      );
+      setMessage("Login failed. Please try again.");
+    } finally {
+      setSpinnerOn(false);
+    }
+  };
 
-  const postArticle = article => {
-    // ✨ implement
-    // The flow is very similar to the `getArticles` function.
-    // You'll know what to do! Use log statements or breakpoints
-    // to inspect the response from the server.
-  }
+  const getArticles = async () => {
+    setMessage("");
+    setSpinnerOn(true);
+    try {
+      const response = await axiosWithAuth().get("/articles");
+      console.log(response.data);
+      setArticles(response.data.articles || []);
+      setMessage(response.data.message || "Articles fetched successfully.");
+    } catch (error) {
+      console.error("Error fetching articles:", error);
+      setMessage(
+        error.response && error.response.data
+          ? error.response.data.message
+          : "Error occurred"
+      );
+      if (error.response && error.response.status === 401) {
+        redirectToLogin();
+      }
+    } finally {
+      setSpinnerOn(false);
+    }
+  };
 
-  const updateArticle = ({ article_id, article }) => {
-    // ✨ implement
-    // You got this!
-  }
+  const postArticle = async (article) => {
+    setSpinnerOn(true);
+    setMessage("");
 
-  const deleteArticle = article_id => {
-    // ✨ implement
-  }
+    try {
+      const response = await axiosWithAuth().post("/articles", article);
+      setArticles((prevArticles) => [...prevArticles, response.data.article]);
+
+      setMessage(response.data.message || "Article posted successfully.");
+
+      setTimeout(() => {
+        redirectToArticles();
+      }, 3000);
+    } catch (error) {
+      console.error("Error posting article:", error);
+      setMessage(
+        error.response?.data?.message ||
+          "Failed to post article. Please try again."
+      );
+    } finally {
+      setSpinnerOn(false);
+    }
+  };
+
+  const updateArticle = async ({ article_id, title, text, topic }) => {
+    setMessage("");
+    setSpinnerOn(true);
+    try {
+      const response = await axiosWithAuth().put(`/articles/${article_id}`, {
+        title: title.trim(),
+        text: text.trim(),
+        topic,
+      });
+
+      if (response.data.articles) {
+        setArticles(response.data.articles);
+      } else {
+        setArticles((prevArticles) =>
+          prevArticles.map((art) =>
+            art.article_id === article_id ? { ...art, title, text, topic } : art
+          )
+        );
+      }
+
+      setMessage(response.data.message || "Article updated successfully.");
+      setCurrentArticleId(null);
+    } catch (error) {
+      console.error("Error updating article:", error);
+      setMessage(
+        error.response?.data?.message ||
+          "Failed to update article. Please try again."
+      );
+    } finally {
+      setSpinnerOn(false);
+    }
+  };
+
+  const deleteArticle = async (article_id) => {
+    setMessage("");
+    setSpinnerOn(true);
+    try {
+      const response = await axiosWithAuth().delete(`/articles/${article_id}`);
+
+      setArticles(articles.filter((art) => art.article_id !== article_id));
+      setMessage(response.data.message);
+    } catch (error) {
+      console.error("Error deleting article:", error);
+      setMessage("Failed to delete article. Please try again.");
+    } finally {
+      setSpinnerOn(false);
+    }
+  };
 
   return (
-    // ✨ fix the JSX: `Spinner`, `Message`, `LoginForm`, `ArticleForm` and `Articles` expect props ❗
     <>
-      <Spinner />
-      <Message />
-      <button id="logout" onClick={logout}>Logout from app</button>
-      <div id="wrapper" style={{ opacity: spinnerOn ? "0.25" : "1" }}> {/* <-- do not change this line */}
+      <Spinner on={spinnerOn} />
+      <Message message={message} />
+      <button id="logout" onClick={logout}>
+        Logout from app
+      </button>
+      <div id="wrapper" style={{ opacity: spinnerOn ? "0.25" : "1" }}>
         <h1>Advanced Web Applications</h1>
         <nav>
-          <NavLink id="loginScreen" to="/">Login</NavLink>
-          <NavLink id="articlesScreen" to="/articles">Articles</NavLink>
+          <NavLink id="loginScreen" to="/">
+            Login
+          </NavLink>
+          <NavLink id="articlesScreen" to="/articles">
+            Articles
+          </NavLink>
         </nav>
         <Routes>
-          <Route path="/" element={<LoginForm />} />
-          <Route path="articles" element={
-            <>
-              <ArticleForm />
-              <Articles />
-            </>
-          } />
+          <Route path="/" element={<LoginForm login={login} />} />
+          <Route
+            path="/articles"
+            element={
+              <>
+                <ArticleForm
+                  postArticle={postArticle}
+                  updateArticle={updateArticle}
+                  setCurrentArticleId={setCurrentArticleId}
+                  currentArticleId={currentArticleId}
+                  currentArticle={articles.find(
+                    (art) => art.article_id === currentArticleId
+                  )}
+                />
+                <Articles
+                  setCurrentArticleId={setCurrentArticleId}
+                  getArticles={getArticles}
+                  articles={articles}
+                  deleteArticle={deleteArticle}
+                  updateArticle={updateArticle}
+                />
+              </>
+            }
+          />
         </Routes>
         <footer>Bloom Institute of Technology 2022</footer>
       </div>
     </>
-  )
+  );
 }
